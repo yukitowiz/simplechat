@@ -3,6 +3,8 @@ import json
 import os
 import boto3
 import re  # 正規表現モジュールをインポート
+import urllib
+# import requests
 from botocore.exceptions import ClientError
 
 
@@ -18,8 +20,9 @@ def extract_region_from_arn(arn):
 bedrock_client = None
 
 # モデルID
-MODEL_ID = os.environ.get("MODEL_ID", "us.amazon.nova-lite-v1:0")
-
+# MODEL_ID = os.environ.get("MODEL_ID", "us.amazon.nova-lite-v1:0")
+MODEL_ID = "https://bc85-35-231-103-79.ngrok-free.app"
+print(f"Set MODEL_ID = {MODEL_ID}")
 def lambda_handler(event, context):
     try:
         # コンテキストから実行リージョンを取得し、クライアントを初期化
@@ -81,25 +84,51 @@ def lambda_handler(event, context):
         }
         
         print("Calling Bedrock invoke_model API with payload:", json.dumps(request_payload))
-        
-        # invoke_model APIを呼び出し
-        response = bedrock_client.invoke_model(
-            modelId=MODEL_ID,
-            body=json.dumps(request_payload),
-            contentType="application/json"
+        payload = {
+            "prompt": message,
+            "max_new_tokens": 100,
+            "do_sample": True,
+            "temperature": 0.7,
+            "top_p": 0.9
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        url = f"{MODEL_ID}/generate"
+        # FastAPI
+        # response = requests.post(url, json=payload, headers=headers)
+        # http_status = response.status_code
+
+        request = urllib.request.Request(
+            url=url,
+            data=json.dumps(payload).encode('utf-8'),  # JSONデータをバイト列に変換
+            headers={'Content-Type': 'application/json'},
+            method='POST'
         )
+        response = urllib.request.urlopen(request)
+        http_status = response.getcode()
+ 
+        # invoke_model APIを呼び出し
+        # response = bedrock_client.invoke_model(
+        #     modelId=MODEL_ID,
+        #    body=json.dumps(request_payload),
+        #    contentType="application/json"
+        # )
         
         # レスポンスを解析
-        response_body = json.loads(response['body'].read())
-        print("Bedrock response:", json.dumps(response_body, default=str))
-        
+        response_body = json.loads(response.read().decode('utf-8'))["generated_text"]
+        # response_body = json.loads(response['body'].read())
+        # response_body = response.json()['generated_text']
+        print("FastAPI response:", http_status, response_body)
         # 応答の検証
-        if not response_body.get('output') or not response_body['output'].get('message') or not response_body['output']['message'].get('content'):
-            raise Exception("No response content from the model")
+        #if not response_body.get('output') or not response_body['output'].get('message') or not response_body['output']['message'].get('content'):
+        #    raise Exception("No response content from the model")
         
         # アシスタントの応答を取得
-        assistant_response = response_body['output']['message']['content'][0]['text']
-        
+        #assistant_response = response_body['output']['message']['content'][0]['text']
+        assistant_response = response_body
+
         # アシスタントの応答を会話履歴に追加
         messages.append({
             "role": "assistant",
